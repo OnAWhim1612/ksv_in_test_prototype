@@ -3,15 +3,23 @@ import pandas as pd
 import os
 import json
 import numpy as np
+import time
 
 
-
+# Define username and password for admin and participant access
 admin_username = "admin"
 admin_password = "54321"
 participant_username = "register"
 participant_password = "12345"
 
+junior_judge_credentials = {
+        "Junior_judge1": "JJ1OODKSV",
+        "Junior_judge2": "JJ2OODKSV",
+        "Junior_judge3": "JJ3OODKSV"
+    }
 
+
+# Initialize the control_db with default values
 control_db = {
     "Registration Juniors": {"status": True, "toggle": True},
     "Registration Sub Juniors": {"status": True, "toggle": True},
@@ -20,31 +28,31 @@ control_db = {
     "Finals": {"status": True, "toggle": True},
 }
 
-
+# File path for storing Category 1 data
 juniors_data_file = "juniors_data.csv"
-
+# File path for storing category status
 category_status_file = "category_status.json"
 scoring_criteria_file = "scoring.csv"
 
 
 
-
+# Load or initialize Category 1 data
 if os.path.exists(juniors_data_file):
     prelims_jun_all = pd.read_csv(juniors_data_file)
 else:
     prelims_jun_all = pd.DataFrame(columns=["Name", "School", "Attendance"])
 
-
+# Load or initialize category statuses from a JSON file
 if os.path.exists(category_status_file):
     with open(category_status_file, "r") as file:
         control_db = json.load(file)
 
-
+# Define a function to save control_db to a JSON file
 def save_control_db_to_file():
     with open(category_status_file, "w") as file:
         json.dump(control_db, file)
 
-
+# Define a function to save prelims_1_all data to a CSV file
 def save_prelims_jun_all_to_csv(data):
     data.to_csv(juniors_data_file, index=False)
 
@@ -82,34 +90,31 @@ def admin_panel():
 
 
 def generate_scoresheet():
-   
+    # Check if the required files exist
     if not os.path.exists('roster_prelim_jun.csv'):
         st.write("Roster file is missing. Please prepare the roster before generating the scoresheet.")
         return
 
- 
+    # Load the roster from roster_prelim_cat1.csv
     roster_df = pd.read_csv('roster_prelim_jun.csv')
 
-    
-    judges = ['Judge 1', 'Judge 2', 'Judge 3']
+    # Create a list of judges (You can modify this to add more judges)
+    judges = ['judge1', 'judge2', 'judge3']
 
-   
+    # Check if the scoring criteria file exists
     if not os.path.exists(scoring_criteria_file):
         st.write("Scoring criteria file is missing. Please upload it.")
         return
 
+    # Load scoring criteria from scoring.csv
     scoring_df = pd.read_csv(scoring_criteria_file)
 
-
+    # Create an empty scoresheet DataFrame
     scoresheet = roster_df[['Name', 'School']].copy()
 
- 
-    for judge in judges:
-        for index, row in scoring_df.iterrows():
-            criteria = row['Criteria']
-            scoresheet[f"{judge} {criteria}"] = np.nan  # Initialize with NaN
+    # Add columns for each judge's scores based on criteria
 
-
+    # Save the generated scoresheet to scoresheet_cat_1.csv
     scoresheet.to_csv('scoresheet_jun.csv', index=False)
     st.write("Scoresheet generated successfully.")
 
@@ -122,15 +127,15 @@ def control_panel():
     for reg_category, data in control_db.items():
         data["toggle"] = st.checkbox(reg_category, data["toggle"])
         data["status"] = data["toggle"]
-     
+        # Save the updated status
         save_control_db_to_file()
 
     st.title("Scoring Criteria")
     scoring_criteria = st.file_uploader("Upload a spreadsheet of scoring criteria", type=["csv", "xlsx"])
     if scoring_criteria is not None:
-      
-        scoring_df = pd.read_excel(scoring_criteria) 
-     
+        # Read the uploaded file
+        scoring_df = pd.read_excel(scoring_criteria)  # Modify according to your data format
+        # Save the scoring criteria to a new CSV file or replace the existing one
         scoring_df.to_csv(scoring_criteria_file, index=False)
 
 
@@ -144,32 +149,33 @@ def control_panel():
 def load_prelims_jun_all():
     return pd.DataFrame(columns=["Name", "School", "Attendance"])
 
+
 def jun_admin():
-    global prelims_jun_all 
+    global prelims_jun_all  # Add this line to indicate that prelims_1_all is a global variable
     st.title("Category 1")
     st.write("Upload a spreadsheet with participant names and school names.")
 
-   
+    # File uploader
     uploaded_file = st.file_uploader("Upload a spreadsheet", type=["csv", "xlsx"])
 
     if uploaded_file is not None:
         if st.button("Process and Save"):
             data = pd.read_excel(uploaded_file)  # Modify this according to your data format (csv, xlsx, etc.)
 
-            
+            # Clear the existing data and replace it with the new data
             prelims_jun_all = data
-        
+            # Save the data to the CSV file
             save_prelims_jun_all_to_csv(prelims_jun_all)
 
     st.title("Juniors All")
     st.dataframe(prelims_jun_all)
- 
+    # "Generate Roster" button
     if st.button("Generate Roster"):
-        
+        # Filter participants with 'Present' status
         present_participants = prelims_jun_all[prelims_jun_all['Attendance'] == 'Present']
 
         if not present_participants.empty:
-        
+            # Save the roster as CSV without the 'Attendance' column
             present_participants.drop(columns=['Attendance'], inplace=True)
             present_participants.to_csv('roster_prelim_jun.csv', index=False)
             st.write("Generated Roster:")
@@ -178,26 +184,18 @@ def jun_admin():
         else:
             st.write("No participants with 'Present' status. Roster not generated.")
 
-  
-    if os.path.exists('roster_prelim_jun.csv'):
-        with open('roster_prelim_jun.csv', 'rb') as file:
-            data = file.read()
-        st.download_button(
-            label="Download Roster",
-            data=data,
-            key="roster_prelim_jun.csv",
-            file_name="roster_prelim_jun.csv",
-        )
-
-    if st.button("Generate Scoresheet"):
-        generate_scoresheet()
-
     if os.path.exists('scoresheet_jun.csv'):
         scoresheet = pd.read_csv('scoresheet_jun.csv')
+
+        # Check if 'Total' column already exists, if not, calculate and save the totals in the CSV
+        if 'Total' not in scoresheet.columns:
+            scoresheet['Total'] = scoresheet.iloc[:, 2:].sum(axis=1)
+            scoresheet.to_csv('scoresheet_jun.csv', index=False)  # Save the 'Total' column in the CSV
+
         st.write("Scoresheet:")
         st.dataframe(scoresheet)
 
-  
+        # Add a button to download the scoresheet
         with open('scoresheet_jun.csv', 'rb') as file:
             data = file.read()
         st.download_button(
@@ -207,6 +205,16 @@ def jun_admin():
             file_name="scoresheet_jun.csv",
         )
 
+        if st.button("Refresh Scoresheet"):
+            scoresheet = pd.read_csv('scoresheet_jun.csv')
+            if 'Total' not in scoresheet.columns:  # Recalculate Total only if not present
+                scoresheet['Total'] = scoresheet.iloc[:, 2:-1].sum(axis=1)
+            scoresheet['Total'] = scoresheet.iloc[:, 2:-1].sum(axis=1)  # Recalculate the Total column
+            scoresheet.to_csv('scoresheet_jun.csv', index=False)  # Save the updated scoresheet
+            st.write("Scoresheet Reloaded:")
+            st.dataframe(scoresheet)
+
+
     juniors_judging_file = "juniors_judging_status.json"
     if os.path.exists(juniors_judging_file):
         with open(juniors_judging_file, "r") as file:
@@ -214,18 +222,21 @@ def jun_admin():
     else:
         current_judging_status = {"status": False}  # Set the default status if the file doesn't exist
 
-
+    # Toggle judging status only if it doesn't exist or explicitly set by the user
     judging_status = st.checkbox('Open Judging', current_judging_status.get("status", False))
 
-   
+    # Update the judging status only if changed explicitly by the user
     if current_judging_status.get("status") is None or current_judging_status.get("status") != judging_status:
         current_judging_status["status"] = judging_status
 
-   
+        # Save the updated judging status to the file
         with open(juniors_judging_file, "w") as file:
             json.dump(current_judging_status, file)
 
     st.write("Judging Status: " + ("Open" if judging_status else "Closed"))
+
+
+
 
 
 def registration_panel():
@@ -240,12 +251,73 @@ def registration_panel():
                                             [f"{row['Name']}, {row['School']}" for _, row in prelims_jun_all.iterrows()])
         if st.button("Register"):
             selected_name, selected_school = selected_participant.split(", ")
-           
+            # Update the attendance status for the selected participant
             prelims_jun_all.loc[(prelims_jun_all['Name'] == selected_name) & (
                         prelims_jun_all['School'] == selected_school), 'Attendance'] = "Present"
-          
+            # Save the data to the CSV file
             save_prelims_jun_all_to_csv(prelims_jun_all)
             st.write(f"Registered {selected_name} from {selected_school}")
+
+
+
+
+
+def junior_judge_panel(username):
+    judging_status_file = "juniors_judging_status.json"
+
+    with open(judging_status_file, "r") as file:
+        current_judging_status = json.load(file)
+
+    if not current_judging_status.get("status", False):
+        st.write("Judging is not currently Open. Please wait.")
+        return
+
+    scoresheet_file = "scoresheet_jun.csv"
+    scoring_file = "scoring.csv"
+    judge_file = f"prelim_jun_{username.split('_')[1]}.csv"
+
+    scoresheet = pd.read_csv(scoresheet_file)
+    scoring_df = pd.read_csv(scoring_file)
+
+    st.write(f"Welcome {username} to the Junior Judge Panel")
+
+    selected_page = st.sidebar.radio("Navigate", ["Score", "Overview"])
+
+    if selected_page == "Score":
+        selected_participant = st.selectbox("Choose a participant", scoresheet["Name"] + ", " + scoresheet["School"])
+
+        if selected_participant:
+            participant_index = scoresheet[(scoresheet["Name"] + ", " + scoresheet["School"]) == selected_participant].index[0]
+            for criteria, pos_neg, score in zip(scoring_df["Criteria"], scoring_df["Pos/ Neg"], scoring_df["Score"]):
+                if pos_neg == "Pos":
+                    score_value = st.slider(criteria, 0, score, 0)
+                else:
+                    score_value = st.slider(criteria, 0, score, 0)
+                scoresheet.at[participant_index, f"{username.split('_')[1]} {criteria}"] = score_value
+
+            if st.button("Submit"):
+                scoresheet.to_csv(scoresheet_file, index=False)
+                judge_scores = scoresheet[["Name", "School"] + [col for col in scoresheet.columns if username.split('_')[1] in col]]
+                judge_scores["Total"] = judge_scores[[col for col in judge_scores.columns if username.split('_')[1] in col and col != "Total"]].sum(axis=1)
+                judge_scores.to_csv(judge_file, index=False)
+                st.write("Scores submitted successfully.")
+
+    elif selected_page == "Overview":
+        if os.path.exists(judge_file):
+            judge_scores = pd.read_csv(judge_file)
+            positive_columns = [col for col in judge_scores.columns if username.split('_')[1] in col and col != "Total" and not col.startswith("Judge")]
+            judge_scores["Total"] = judge_scores[positive_columns].sum(axis=1) - judge_scores[[col for col in judge_scores.columns if "Neg" in col]].sum(axis=1)
+            st.write("Overview of Scores:")
+            st.dataframe(judge_scores)
+        else:
+            st.write("No scores available yet.")
+
+
+def update_score(selected_participant, selected_score, score, score_sheet):
+    name, school = selected_participant.split(', ')
+    score_sheet.loc[(score_sheet['Name'] == name) & (score_sheet['School'] == school), selected_score] = score
+    score_sheet.to_csv('scoresheet_jun.csv', index=False)
+
 
 def main():
     st.title("KSV Interface")
@@ -253,12 +325,16 @@ def main():
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
 
-    if username.strip() == admin_username and password.strip() == admin_password:
+    if (username, password) in junior_judge_credentials.items():
+        junior_judge_panel(username)
+    elif username.strip() == admin_username and password.strip() == admin_password:
         admin_panel()
     elif username.strip() == participant_username and password.strip() == participant_password:
         registration_panel()
     else:
         st.write("Please enter Valid Credentials")
+
+
 
 if __name__ == "__main__":
     main()
