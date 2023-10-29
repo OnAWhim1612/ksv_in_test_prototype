@@ -1,0 +1,16 @@
+# requirements.txt
+
+# For web application and user interface
+streamlit
+
+# For data handling and manipulation
+pandas
+
+# For file operations
+openpyxl
+
+# For JSON handling
+json5
+
+# For general utilities
+numpy
