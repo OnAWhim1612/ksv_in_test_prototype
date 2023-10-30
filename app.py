@@ -184,6 +184,9 @@ def jun_admin():
         else:
             st.write("No participants with 'Present' status. Roster not generated.")
 
+    if st.button("Generate Scoresheet"):
+        generate_scoresheet()
+
     if os.path.exists('scoresheet_jun.csv'):
         scoresheet = pd.read_csv('scoresheet_jun.csv')
 
@@ -207,13 +210,14 @@ def jun_admin():
 
         if st.button("Refresh Scoresheet"):
             scoresheet = pd.read_csv('scoresheet_jun.csv')
-            if 'Total' not in scoresheet.columns:  # Recalculate Total only if not present
-                scoresheet['Total'] = scoresheet.iloc[:, 2:-1].sum(axis=1)
-            scoresheet['Total'] = scoresheet.iloc[:, 2:-1].sum(axis=1)  # Recalculate the Total column
-            scoresheet.to_csv('scoresheet_jun.csv', index=False)  # Save the updated scoresheet
+
+            # Calculate Total column, excluding first two columns and the 'Total' column itself
+            cols_to_sum = [col for col in scoresheet.columns if col not in ['Name', 'School', 'Total']]
+            scoresheet['Total'] = scoresheet[cols_to_sum].sum(axis=1)
+
+            scoresheet.to_csv('scoresheet_jun.csv', index=False)
             st.write("Scoresheet Reloaded:")
             st.dataframe(scoresheet)
-
 
     juniors_judging_file = "juniors_judging_status.json"
     if os.path.exists(juniors_judging_file):
@@ -235,7 +239,71 @@ def jun_admin():
 
     st.write("Judging Status: " + ("Open" if judging_status else "Closed"))
 
+    if st.button("Generate Finalists"):
+        judging_status_file = "juniors_judging_status.json"
+        finalists_file = "jun_finalists.csv"
+        all_participants_file = "jun_all_participants.csv"
 
+        with open(judging_status_file, "r") as file:
+            current_judging_status = json.load(file)
+
+        if current_judging_status.get("status", False):
+            st.write("Judging is still open. Cannot generate finalists until judging is closed.")
+        else:
+            if os.path.exists('scoresheet_jun.csv'):
+                scoresheet = pd.read_csv('scoresheet_jun.csv')
+                if 'Total' not in scoresheet.columns:
+                    st.write("Total column not found in the scoresheet.")
+                else:
+                    # Creating sum columns for tie-breakers (if columns don't exist)
+                    tie_breaker_cols = ['Voice Modulation', 'Clarity', 'Pronunciation']
+                    for col in tie_breaker_cols:
+                        for judge in range(1, 4):
+                            scoresheet[f'judge{judge} {col}'] = scoresheet.filter(like=f'judge{judge} {col}').sum(
+                                axis=1)
+
+                    top_5 = scoresheet.nlargest(5, 'Total')
+
+                    # Sorting the top 5 based on tie-breakers
+                    top_5 = top_5.sort_values(
+                        ['judge1 Voice Modulation', 'judge2 Voice Modulation', 'judge3 Voice Modulation',
+                         'judge1 Clarity', 'judge2 Clarity', 'judge3 Clarity',
+                         'judge1 Pronunciation', 'judge2 Pronunciation', 'judge3 Pronunciation'],
+                        ascending=False)
+
+                    # Assign ranks to the participants
+                    top_5['Rank'] = range(1, len(top_5) + 1)
+
+                    # Save the top 5 finalists to a CSV file (with only required columns)
+                    finalists_data = top_5[['Name', 'School', 'Total', 'Rank']]
+                    finalists_data.to_csv(finalists_file, index=False)
+                    st.write("Top 5 finalists generated and saved to jun_finalists.csv.")
+
+                    # Save details of all participants (with only required columns)
+                    all_participants_data = scoresheet[['Name', 'School', 'Total']]
+                    all_participants_data['Rank'] = all_participants_data['Total'].rank(method='min', ascending=False)
+                    all_participants_data.to_csv(all_participants_file, index=False)
+                    st.write("All participants' details saved to jun_all_participants.csv.")
+
+                    # Generate individual files for each participant with their ranks and totals
+                    for _, participant in top_5.iterrows():
+                        file_name = f"{participant['Name']}_{participant['School']}_details.csv"
+                        participant_data = participant[['Name', 'School', 'Total', 'Rank']]
+                        participant_data.to_csv(file_name, index=False)
+
+                    st.write("Individual participant files with ranks and totals generated.")
+
+                    st.download_button(label="Download Finalists", data=open(finalists_file, 'rb'),
+                                       file_name='jun_finalists.csv')
+                    st.download_button(label="Download All Participants", data=open(all_participants_file, 'rb'),
+                                       file_name='jun_all_participants.csv')
+
+                    for _, participant in top_5.iterrows():
+                        file_name = f"{participant['Name']}_{participant['School']}_details.csv"
+                        st.download_button(label=f"Download {participant['Name']} - {participant['School']} Details",
+                                           data=open(file_name, 'rb'), file_name=file_name)
+            else:
+                st.write("Scoresheet not found. Please generate the scoresheet first.")
 
 
 
@@ -292,7 +360,7 @@ def junior_judge_panel(username):
                 if pos_neg == "Pos":
                     score_value = st.slider(criteria, 0, score, 0)
                 else:
-                    score_value = st.slider(criteria, 0, score, 0)
+                    score_value = st.slider(criteria, score, 0, 0) # Modified line to handle negative scores correctly
                 scoresheet.at[participant_index, f"{username.split('_')[1]} {criteria}"] = score_value
 
             if st.button("Submit"):
